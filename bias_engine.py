@@ -89,12 +89,12 @@ def analyze_bias(df, label_col, sensitive_col):
     )
 
     return {
-        "accuracy (%)": float(round(acc * 100, 1)),
+        "accuracy": float(round(acc * 100, 1)),
         "demographic_parity_diff": float(round(dpd, 3)),
         "equalized_odds_diff": float(round(eod, 3)),
         "bias_score": float(round(abs(dpd), 3)),
         "is_biased": bool(abs(dpd) > 0.1),
-        "sensitive_feature": sensitive_col,
+        "sensitive_col": sensitive_col,
         "groups": list(s_te.unique())
     }
 
