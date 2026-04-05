@@ -1,4 +1,4 @@
-import pandas as pd
+import pandas as pd 
 import os
 
 from sklearn.model_selection import train_test_split
@@ -11,55 +11,48 @@ from fairlearn.metrics import (
     demographic_parity_difference,
     equalized_odds_difference
 )
-
-
 def analyze_bias(df, label_col, sensitive_col):
     df = df.copy()
 
     # ---------------------------
-    # ✅ CLEAN TARGET (ROBUST)
+    # ✅ TARGET CLEANING (GENERIC)
     # ---------------------------
-    y = df[label_col].astype(str).str.strip().str.replace('.', '', regex=False)
+    y = pd.to_numeric(df[label_col], errors='coerce')
 
-    # Normalize values
-    y = y.str.upper()
-
-    y = y.map({
-        '>50K': 1,
-        '<=50K': 0
-    })
-
-    # Remove invalid rows
+    # Drop invalid
     valid_idx = y.notna()
     df = df.loc[valid_idx].copy()
     y = y.loc[valid_idx].astype(int)
 
-    if len(df) < 10:
-        raise ValueError("❌ Dataset became too small after cleaning target.")
+    # Ensure binary
+    y = y[y.isin([0, 1])]
+    df = df.loc[y.index]
+
+    if len(df) < 30:
+        print("⚠️ Warning: dataset small after cleaning")
 
     # ---------------------------
-    # ✅ CLEAN SENSITIVE FEATURE
+    # ✅ SENSITIVE FEATURE
     # ---------------------------
-    sensitive = df[sensitive_col].astype(str).str.strip()
+    sensitive = df[sensitive_col].astype(str).fillna("Unknown")
 
     # ---------------------------
     # ✅ FEATURES
     # ---------------------------
     X = df.drop(columns=[label_col, sensitive_col]).copy()
 
-    # Fill missing values
-    X = X.fillna("missing")
+    # Keep only numeric
+    X = X.select_dtypes(include=['number'])
 
-    # Encode categorical columns
-    for col in X.select_dtypes(include=['object', 'string']).columns:
-        X[col] = LabelEncoder().fit_transform(X[col].astype(str))
+    # Fill numeric safely
+    X = X.fillna(0)
 
-    # ---------------------------
-    # ✅ SPLIT (SAFE)
-    # ---------------------------
     if len(X) < 10:
-        raise ValueError("❌ Not enough data for training.")
+        raise ValueError("Not enough data after preprocessing")
 
+    # ---------------------------
+    # ✅ SPLIT
+    # ---------------------------
     X_tr, X_te, y_tr, y_te, s_tr, s_te = train_test_split(
         X, y, sensitive, test_size=0.2, random_state=42
     )
@@ -80,7 +73,12 @@ def analyze_bias(df, label_col, sensitive_col):
     # ---------------------------
     if len(set(y_te)) < 2 or len(set(y_pred)) < 2:
         return {
-            "error": "Only one class predicted — cannot compute fairness metrics."
+            "accuracy": 0,
+            "bias_score": 0,
+            "is_biased": False,
+            "groups": list(s_te.unique()),
+            "sensitive_col": sensitive_col,
+            "note": "Only one class predicted"
         }
 
     # ---------------------------
@@ -101,12 +99,7 @@ def analyze_bias(df, label_col, sensitive_col):
     )
 
     # ---------------------------
-    # ✅ GROUPS (CLEAN OUTPUT)
-    # ---------------------------
-    groups = sorted(list(s_te.unique()))
-
-    # ---------------------------
-    # ✅ RESULT
+    # ✅ OUTPUT
     # ---------------------------
     return {
         "accuracy": float(round(acc * 100, 1)),
@@ -115,18 +108,5 @@ def analyze_bias(df, label_col, sensitive_col):
         "bias_score": float(round(abs(dpd), 3)),
         "is_biased": bool(abs(dpd) > 0.1),
         "sensitive_col": sensitive_col,
-        "groups": groups
+        "groups": sorted(list(s_te.unique()))
     }
-
-
-# ---------------------------
-# ❌ REMOVE THIS PART (IMPORTANT)
-# ---------------------------
-# These lines should NOT be inside this file when used with Streamlit
-# because Streamlit already passes df dynamically
-
-# BASE_DIR = os.path.dirname(__file__)
-# file_path = os.path.join(BASE_DIR, "adult.csv")
-# df = pd.read_csv(file_path)
-
-# print(analyze_bias(df, "income", "gender"))

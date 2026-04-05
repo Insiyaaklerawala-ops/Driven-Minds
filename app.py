@@ -24,7 +24,7 @@ st.caption("Upload any dataset to find hidden discrimination in AI models")
 uploaded = st.file_uploader("Upload your CSV file", type=["csv"])
 
 if uploaded is None:
-    st.info("Upload a CSV to get started. Try the Adult Income dataset.")
+    st.info("Upload a CSV to get started.")
     st.stop()
 
 # ---------------------------
@@ -42,7 +42,7 @@ if df.empty:
 
 st.success(f"Loaded {len(df):,} rows · {len(df.columns)} columns")
 
-with st.expander("Preview data (first 10 rows)"):
+with st.expander("Preview data"):
     st.dataframe(df.head(10))
 
 # ---------------------------
@@ -50,13 +50,10 @@ with st.expander("Preview data (first 10 rows)"):
 # ---------------------------
 col1, col2 = st.columns(2)
 
-label_col = col1.selectbox(
-    "What are we predicting?",
-    df.columns
-)
+label_col = col1.selectbox("Target column", df.columns)
 
 sensitive_col = col2.selectbox(
-    "Which column might cause bias?",
+    "Sensitive column",
     [col for col in df.columns if col != label_col]
 )
 
@@ -69,9 +66,10 @@ if st.button("Analyze Bias", type="primary"):
 
     valid_data = df[[label_col, sensitive_col]].dropna()
 
-    if valid_data.shape[0] < 10:
-        st.error("❌ Not enough valid data after cleaning.")
-        st.stop()
+    st.write(f"Valid rows after cleaning: {valid_data.shape[0]}")
+
+    if valid_data.shape[0] < 50:
+        st.warning("⚠️ Small dataset after cleaning — results may be unreliable.")
 
     with st.spinner("Analyzing..."):
         try:
@@ -82,7 +80,7 @@ if st.button("Analyze Bias", type="primary"):
             st.stop()
 
 # ---------------------------
-# 📊 SHOW RESULTS (PERSISTENT)
+# 📊 SHOW RESULTS
 # ---------------------------
 if "results" in st.session_state:
 
@@ -92,10 +90,10 @@ if "results" in st.session_state:
     st.subheader("Results")
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("Model Accuracy", f"{results['accuracy']}%")
-    c2.metric("Bias Score", results['bias_score'])
+    c1.metric("Model Accuracy", f"{results.get('accuracy', 'N/A')}%")
+    c2.metric("Bias Score", results.get('bias_score', 'N/A'))
 
-    verdict = "Bias Found" if results['is_biased'] else "Looks Fair"
+    verdict = "Bias Found" if results.get('is_biased') else "Looks Fair"
     c3.metric("Verdict", verdict)
 
     st.info(f"AI Analysis: {explanation}")
@@ -103,13 +101,13 @@ if "results" in st.session_state:
     # ---------------------------
     # 📈 VISUALIZATION
     # ---------------------------
-    color = "#E24B4A" if results['is_biased'] else "#1D9E75"
+    color = "#E24B4A" if results.get('is_biased') else "#1D9E75"
 
     fig = px.bar(
-        x=results['groups'],
-        y=[results['bias_score']] * len(results['groups']),
-        labels={"x": results['sensitive_col'], "y": "Bias score"},
-        title=f"Bias score across {results['sensitive_col']} groups",
+        x=results.get('groups', []),
+        y=[results.get('bias_score', 0)] * len(results.get('groups', [])),
+        labels={"x": results.get('sensitive_col', ""), "y": "Bias score"},
+        title=f"Bias across {results.get('sensitive_col', '')}",
         color_discrete_sequence=[color]
     )
 
@@ -126,26 +124,19 @@ if "results" in st.session_state:
         pdf_path = generate_pdf(results, explanation)
 
         with open(pdf_path, "rb") as f:
-            st.download_button(
-                "Download PDF Report",
-                f,
-                "bias_report.pdf"
-            )
+            st.download_button("Download PDF", f, "bias_report.pdf")
     except Exception as e:
         st.warning(f"⚠️ PDF error: {e}")
 
     st.divider()
 
     # ---------------------------
-    # 💬 CHAT (FIXED)
+    # 💬 CHAT
     # ---------------------------
     st.subheader("Ask about this report")
 
     with st.form("chat_form"):
-        question = st.text_input(
-            "Type your question...",
-            placeholder="Why is this biased? How do we fix it?"
-        )
+        question = st.text_input("Ask a question")
         submitted = st.form_submit_button("Get Answer")
 
     if submitted and question:
@@ -156,5 +147,5 @@ if "results" in st.session_state:
             except Exception as e:
                 st.error(f"❌ Error: {e}")
 
-elif "results" not in st.session_state:
-    st.info("Run analysis to see results and ask questions.")
+else:
+    st.info("Run analysis to see results.")
