@@ -84,37 +84,3 @@ def get_severity(bias_score: float) -> str:
         return "High — significant bias detected"
 
 
-# -------------------- STREAMLIT UI --------------------
-
-st.set_page_config(page_title="⚖️ Unbiased AI", layout="wide")
-
-st.title("⚖️ Unbiased AI — Bias Detector")
-st.caption("Analyze bias in AI models and get improvement suggestions")
-
-# Fake data (replace later with real dataset logic)
-results = {
-    "accuracy": 85.2,
-    "bias_score": 0.19,
-    "sensitive_col": "gender",
-    "groups": ["Male", "Female"],
-    "is_biased": True
-}
-
-# Show report
-st.subheader("📊 Bias Report")
-st.text(explain_bias(results))
-
-severity = get_severity(results["bias_score"])
-st.write(f"⚠️ Severity: **{severity}**")
-
-# User question input
-st.subheader("💬 Ask AI about the bias")
-question = st.text_input("Enter your question:")
-
-if st.button("Get Answer"):
-    if question.strip():
-        with st.spinner("Thinking..."):
-            answer = answer_question(question, results)
-        st.success(answer)
-    else:
-        st.warning("Please enter a question.")

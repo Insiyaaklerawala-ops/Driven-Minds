@@ -17,10 +17,12 @@ def analyze_bias(df, label_col, sensitive_col):
     df = df.copy()
 
     # ---------------------------
-    # 🔥 CLEAN TARGET
+    # ✅ CLEAN TARGET (ROBUST)
     # ---------------------------
-    y = df[label_col].astype(str).str.strip()
-    y = y.str.replace('.', '', regex=False)
+    y = df[label_col].astype(str).str.strip().str.replace('.', '', regex=False)
+
+    # Normalize values
+    y = y.str.upper()
 
     y = y.map({
         '>50K': 1,
@@ -29,18 +31,21 @@ def analyze_bias(df, label_col, sensitive_col):
 
     # Remove invalid rows
     valid_idx = y.notna()
-    df = df[valid_idx]
-    y = y[valid_idx].astype(int)
+    df = df.loc[valid_idx].copy()
+    y = y.loc[valid_idx].astype(int)
+
+    if len(df) < 10:
+        raise ValueError("❌ Dataset became too small after cleaning target.")
 
     # ---------------------------
-    # 🔥 CLEAN SENSITIVE FEATURE
+    # ✅ CLEAN SENSITIVE FEATURE
     # ---------------------------
     sensitive = df[sensitive_col].astype(str).str.strip()
 
     # ---------------------------
-    # FEATURES
+    # ✅ FEATURES
     # ---------------------------
-    X = df.drop(columns=[label_col, sensitive_col])
+    X = df.drop(columns=[label_col, sensitive_col]).copy()
 
     # Fill missing values
     X = X.fillna("missing")
@@ -50,14 +55,17 @@ def analyze_bias(df, label_col, sensitive_col):
         X[col] = LabelEncoder().fit_transform(X[col].astype(str))
 
     # ---------------------------
-    # SPLIT
+    # ✅ SPLIT (SAFE)
     # ---------------------------
+    if len(X) < 10:
+        raise ValueError("❌ Not enough data for training.")
+
     X_tr, X_te, y_tr, y_te, s_tr, s_te = train_test_split(
         X, y, sensitive, test_size=0.2, random_state=42
     )
 
     # ---------------------------
-    # 🔥 MODEL (NO WARNINGS)
+    # ✅ MODEL
     # ---------------------------
     model = Pipeline([
         ("scaler", StandardScaler()),
@@ -68,7 +76,7 @@ def analyze_bias(df, label_col, sensitive_col):
     y_pred = model.predict(X_te)
 
     # ---------------------------
-    # SAFETY CHECK
+    # ✅ SAFETY CHECK
     # ---------------------------
     if len(set(y_te)) < 2 or len(set(y_pred)) < 2:
         return {
@@ -76,18 +84,30 @@ def analyze_bias(df, label_col, sensitive_col):
         }
 
     # ---------------------------
-    # METRICS
+    # ✅ METRICS
     # ---------------------------
     acc = accuracy_score(y_te, y_pred)
 
     dpd = demographic_parity_difference(
-        y_te, y_pred, sensitive_features=s_te
+        y_true=y_te,
+        y_pred=y_pred,
+        sensitive_features=s_te
     )
 
     eod = equalized_odds_difference(
-        y_te, y_pred, sensitive_features=s_te
+        y_true=y_te,
+        y_pred=y_pred,
+        sensitive_features=s_te
     )
 
+    # ---------------------------
+    # ✅ GROUPS (CLEAN OUTPUT)
+    # ---------------------------
+    groups = sorted(list(s_te.unique()))
+
+    # ---------------------------
+    # ✅ RESULT
+    # ---------------------------
     return {
         "accuracy": float(round(acc * 100, 1)),
         "demographic_parity_diff": float(round(dpd, 3)),
@@ -95,24 +115,18 @@ def analyze_bias(df, label_col, sensitive_col):
         "bias_score": float(round(abs(dpd), 3)),
         "is_biased": bool(abs(dpd) > 0.1),
         "sensitive_col": sensitive_col,
-        "groups": list(s_te.unique())
+        "groups": groups
     }
 
 
 # ---------------------------
-# 🔥 LOAD DATA SAFELY
+# ❌ REMOVE THIS PART (IMPORTANT)
 # ---------------------------
-BASE_DIR = os.path.dirname(__file__)
-file_path = os.path.join(BASE_DIR, "adult.csv")
+# These lines should NOT be inside this file when used with Streamlit
+# because Streamlit already passes df dynamically
 
-df = pd.read_csv(file_path)
+# BASE_DIR = os.path.dirname(__file__)
+# file_path = os.path.join(BASE_DIR, "adult.csv")
+# df = pd.read_csv(file_path)
 
-
-# ---------------------------
-# 🚀 RUN
-# ---------------------------
-print("Gender Bias:")
-print(analyze_bias(df, "income", "gender"))
-
-print("\nRace Bias:")
-print(analyze_bias(df, "income", "race"))
+# print(analyze_bias(df, "income", "gender"))
