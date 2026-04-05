@@ -6,6 +6,9 @@ from bias_engine import analyze_bias
 from gemini_explainer import explain_bias, answer_question
 from report_generator import generate_pdf
 
+# ---------------------------
+# ⚙️ CONFIG
+# ---------------------------
 st.set_page_config(
     page_title="Unbiased AI",
     page_icon="⚖️",
@@ -25,7 +28,7 @@ if uploaded is None:
     st.stop()
 
 # ---------------------------
-# 📊 LOAD DATA SAFELY
+# 📊 LOAD DATA
 # ---------------------------
 try:
     df = pd.read_csv(uploaded)
@@ -49,14 +52,12 @@ col1, col2 = st.columns(2)
 
 label_col = col1.selectbox(
     "What are we predicting?",
-    df.columns,
-    help="The outcome column e.g. 'income', 'hired'"
+    df.columns
 )
 
 sensitive_col = col2.selectbox(
     "Which column might cause bias?",
-    [col for col in df.columns if col != label_col],
-    help="e.g. 'gender', 'race', 'age_group'"
+    [col for col in df.columns if col != label_col]
 )
 
 st.divider()
@@ -66,33 +67,33 @@ st.divider()
 # ---------------------------
 if st.button("Analyze Bias", type="primary"):
 
-    # ✅ Prevent empty dataset AFTER cleaning
     valid_data = df[[label_col, sensitive_col]].dropna()
 
     if valid_data.shape[0] < 10:
-        st.error("❌ Not enough valid data after removing missing values. Try different columns.")
+        st.error("❌ Not enough valid data after cleaning.")
         st.stop()
 
-    with st.spinner("Analyzing your dataset... please wait"):
+    with st.spinner("Analyzing..."):
         try:
-            results = analyze_bias(df, label_col, sensitive_col)
-            explanation = explain_bias(results)
+            st.session_state.results = analyze_bias(df, label_col, sensitive_col)
+            st.session_state.explanation = explain_bias(st.session_state.results)
         except Exception as e:
-            st.error(f"❌ Error during analysis: {e}")
+            st.error(f"❌ Error: {e}")
             st.stop()
 
-    # ---------------------------
-    # 📊 RESULTS
-    # ---------------------------
+# ---------------------------
+# 📊 SHOW RESULTS (PERSISTENT)
+# ---------------------------
+if "results" in st.session_state:
+
+    results = st.session_state.results
+    explanation = st.session_state.explanation
+
     st.subheader("Results")
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Model Accuracy", f"{results['accuracy']}%")
-    c2.metric(
-        "Bias Score",
-        results['bias_score'],
-        help="0 = fair · above 0.1 = significant bias"
-    )
+    c2.metric("Bias Score", results['bias_score'])
 
     verdict = "Bias Found" if results['is_biased'] else "Looks Fair"
     c3.metric("Verdict", verdict)
@@ -112,11 +113,7 @@ if st.button("Analyze Bias", type="primary"):
         color_discrete_sequence=[color]
     )
 
-    fig.add_hline(
-        y=0.1,
-        line_dash="dash",
-        annotation_text="Bias threshold (0.10)"
-    )
+    fig.add_hline(y=0.1, line_dash="dash", annotation_text="Bias threshold")
 
     st.plotly_chart(fig, use_container_width=True)
 
@@ -130,30 +127,34 @@ if st.button("Analyze Bias", type="primary"):
 
         with open(pdf_path, "rb") as f:
             st.download_button(
-                label="Download PDF Report",
-                data=f,
-                file_name="bias_report.pdf",
-                mime="application/pdf"
+                "Download PDF Report",
+                f,
+                "bias_report.pdf"
             )
     except Exception as e:
-        st.warning(f"⚠️ Could not generate PDF: {e}")
+        st.warning(f"⚠️ PDF error: {e}")
 
     st.divider()
 
     # ---------------------------
-    # 💬 Q&A SECTION
+    # 💬 CHAT (FIXED)
     # ---------------------------
     st.subheader("Ask about this report")
 
-    question = st.text_input(
-        "Type your question...",
-        placeholder="Why is this biased? How do we fix it?"
-    )
+    with st.form("chat_form"):
+        question = st.text_input(
+            "Type your question...",
+            placeholder="Why is this biased? How do we fix it?"
+        )
+        submitted = st.form_submit_button("Get Answer")
 
-    if question:
+    if submitted and question:
         with st.spinner("Thinking..."):
             try:
                 answer = answer_question(question, results)
-                st.write(answer)
+                st.success(answer)
             except Exception as e:
-                st.error(f"❌ Error generating answer: {e}")
+                st.error(f"❌ Error: {e}")
+
+elif "results" not in st.session_state:
+    st.info("Run analysis to see results and ask questions.")
