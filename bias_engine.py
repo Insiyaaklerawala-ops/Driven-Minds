@@ -111,8 +111,8 @@ df = pd.read_csv(file_path)
 # ---------------------------
 # 🚀 RUN
 # ---------------------------
-print("🔍 Gender Bias:")
+print("Gender Bias:")
 print(analyze_bias(df, "income", "gender"))
 
-print("\n🔍 Race Bias:")
+print("\nRace Bias:")
 print(analyze_bias(df, "income", "race"))
