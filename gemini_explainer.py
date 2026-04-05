@@ -6,17 +6,21 @@ import google.generativeai as genai
 # LOAD ENV
 load_dotenv()
 
+import streamlit as st
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 try:
+    # ✅ Streamlit Cloud / local secrets
     api_key = st.secrets["GEMINI_API_KEY"]
 except Exception:
+    # ✅ fallback for local .env
     api_key = os.getenv("GEMINI_API_KEY")
 
 if not api_key:
-    raise ValueError("API key not found")
-
-genai.configure(api_key=api_key)
-gemini = genai.GenerativeModel("gemini-2.0-flash")
-
+    raise ValueError("❌ API key not found")
 
 def explain_bias(results: dict) -> str:
     bias_score = results.get("bias_score", "N/A")
