@@ -5,8 +5,9 @@ import datetime
 def clean_text(text):
     return str(text).replace("—", "-").replace("–", "-").replace("“", '"').replace("”", '"')
 
-def generate_pdf(results: dict, explanation: str) -> str:
-
+def generate_pdf(results: dict, explanation: str,
+                 after: dict = None,
+                 mit_explanation: str = None) -> str:
     pdf = FPDF()
     pdf.add_page()
 
@@ -91,6 +92,41 @@ def generate_pdf(results: dict, explanation: str) -> str:
 
     # SAVE PDF
     path = "bias_report.pdf"
+    # BEFORE / AFTER SECTION (only if mitigation was run)
+    if after is not None:
+        pdf.ln(4)
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+        pdf.ln(6)
+
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.cell(0, 10, "Bias Mitigation Results", ln=True)
+
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(65, 8, "Before bias score:", ln=False)
+        pdf.set_font("Helvetica", "", 11)
+        pdf.cell(0, 8, str(results['bias_score']), ln=True)
+
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(65, 8, "After bias score:", ln=False)
+        pdf.set_font("Helvetica", "", 11)
+        pdf.cell(0, 8, str(after['after_bias_score']), ln=True)
+
+        improvement = round(
+            results['bias_score'] - after['after_bias_score'], 3
+        )
+        pct = round((improvement / results['bias_score']) * 100)
+
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(65, 8, "Improvement:", ln=False)
+        pdf.set_font("Helvetica", "", 11)
+        pdf.cell(0, 8, f"{pct}% reduction in bias", ln=True)
+
+        if mit_explanation:
+            pdf.ln(4)
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.cell(0, 8, "What was done:", ln=True)
+            pdf.set_font("Helvetica", "", 11)
+            pdf.multi_cell(0, 7, mit_explanation)
     pdf.output(path)
 
     return path

@@ -117,6 +117,9 @@ def analyze_bias(df, label_col, sensitive_col):
 # ---------------------------
 # ✅ MITIGATE BIAS (FAIR MODEL)
 # ---------------------------
+# ---------------------------
+# ⚡ FAST MITIGATE BIAS (OPTIMIZED)
+# ---------------------------
 def mitigate_bias(df, label_col, sensitive_col):
     df = df.copy()
 
@@ -130,20 +133,32 @@ def mitigate_bias(df, label_col, sensitive_col):
 
     X = encode_features(X)
 
+    # 🔥 Reduce dataset size for speed (BIG BOOST)
+    if len(X) > 5000:
+        X = X.sample(5000, random_state=42)
+        y = y.loc[X.index]
+        sensitive = sensitive.loc[X.index]
+
     # Split
     X_tr, X_te, y_tr, y_te, s_tr, s_te = train_test_split(
         X, y, sensitive, test_size=0.2, random_state=42
     )
 
-    # Base model (must be compatible with Fairlearn)
-    base_model = RandomForestClassifier(n_estimators=100, random_state=42)
-
-    fair_model = ExponentiatedGradient(
-        estimator=base_model,
-        constraints=DemographicParity()
+    # ⚡ LIGHTER MODEL (FASTER)
+    base_model = RandomForestClassifier(
+        n_estimators=30,   # 🔥 reduced from 100
+        max_depth=6,       # 🔥 limit depth
+        random_state=42
     )
 
-    print("⚖️ Training fair model...")
+    # ⚡ LIMIT ITERATIONS (HUGE SPEED BOOST)
+    fair_model = ExponentiatedGradient(
+        estimator=base_model,
+        constraints=DemographicParity(),
+        max_iter=10   # 🔥 default is much higher
+    )
+
+    print("⚡ Fast fairness training...")
 
     fair_model.fit(X_tr, y_tr, sensitive_features=s_tr)
 

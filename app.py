@@ -1,10 +1,35 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 
-from bias_engine import analyze_bias
-from gemini_explainer import explain_bias, answer_question
+from bias_engine import analyze_bias, mitigate_bias
+from gemini_explainer import explain_bias, answer_question, explain_mitigation
 from report_generator import generate_pdf
+
+# ---------------------------
+# ⚡ CACHE FUNCTIONS (MAJOR SPEED BOOST)
+# ---------------------------
+@st.cache_data
+def run_analysis(df, label_col, sensitive_col):
+    results = analyze_bias(df, label_col, sensitive_col)
+    explanation = explain_bias(results)
+    return results, explanation
+
+@st.cache_data
+def run_mitigation(df, label_col, sensitive_col):
+    return mitigate_bias(df, label_col, sensitive_col)
+
+@st.cache_data
+def get_mitigation_explanation(before, after):
+    return explain_mitigation(before, after)
+
+# ---------------------------
+# ✅ SESSION STATE INIT
+# ---------------------------
+for key in ["results", "explanation", "after", "mitigation_explanation"]:
+    if key not in st.session_state:
+        st.session_state[key] = None
 
 # ---------------------------
 # ⚙️ CONFIG
@@ -60,7 +85,6 @@ sensitive_col = col2.selectbox(
     [col for col in df.columns if col != label_col]
 )
 
-# Prevent same column
 if label_col == sensitive_col:
     st.error("Target and sensitive column cannot be the same.")
     st.stop()
@@ -80,16 +104,19 @@ if st.button("Analyze Bias", type="primary"):
 
     with st.spinner("Analyzing... please wait"):
         try:
-            st.session_state.results = analyze_bias(df, label_col, sensitive_col)
-            st.session_state.explanation = explain_bias(st.session_state.results)
+            results, explanation = run_analysis(df, label_col, sensitive_col)
         except Exception as e:
             st.error(f"Analysis failed: {str(e)}")
             st.stop()
 
+    st.session_state.results = results
+    st.session_state.explanation = explanation
+    st.session_state.after = None  # reset mitigation
+
 # ---------------------------
 # 📊 SHOW RESULTS
 # ---------------------------
-if "results" in st.session_state:
+if st.session_state.results is not None:
 
     results = st.session_state.results
     explanation = st.session_state.explanation
@@ -98,10 +125,8 @@ if "results" in st.session_state:
 
     c1, c2, c3 = st.columns(3)
 
-    # Accuracy
     c1.metric("Model Accuracy", f"{results.get('accuracy', 'N/A')}%")
 
-    # Bias score
     c2.metric(
         "Bias Score",
         results.get("bias_score", "N/A"),
@@ -109,7 +134,6 @@ if "results" in st.session_state:
         delta_color="inverse"
     )
 
-    # ✅ SIMPLE VERDICT (NO COLOR)
     verdict = "Bias Found" if results.get("is_biased") else "Looks Fair"
 
     c3.metric(
@@ -124,64 +148,34 @@ if "results" in st.session_state:
     # ---------------------------
     # 📈 VISUALIZATION
     # ---------------------------
-    groups = results.get("groups", [])
-    bias_score = results.get("bias_score", 0)
     group_rates = results.get("group_rates", {})
 
-    # Preferred graph
     if group_rates:
         fig = px.bar(
             x=list(group_rates.keys()),
             y=list(group_rates.values()),
-            labels={
-                "x": results.get("sensitive_col", ""),
-                "y": "Positive prediction rate"
-            },
-            title=f"Prediction rate per group — {results.get('sensitive_col', '')}",
-            color=list(group_rates.values()),
-            color_continuous_scale=["#E24B4A", "#EF9F27", "#1D9E75"]
+            title="Prediction rate per group",
         )
-
-        fig.update_layout(coloraxis_showscale=False)
-
-        fig.add_hline(
-            y=sum(group_rates.values()) / len(group_rates),
-            line_dash="dash",
-            annotation_text="Average rate"
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
-
-    # Fallback graph
-    elif groups:
-        color = "#E24B4A" if results.get("is_biased") else "#1D9E75"
-
-        fig = px.bar(
-            x=groups,
-            y=[bias_score] * len(groups),
-            labels={
-                "x": results.get("sensitive_col", ""),
-                "y": "Bias score"
-            },
-            title=f"Bias across {results.get('sensitive_col', '')}",
-            color_discrete_sequence=[color]
-        )
-
-        fig.add_hline(y=0.1, line_dash="dash", annotation_text="Bias threshold")
-
         st.plotly_chart(fig, use_container_width=True)
 
     st.divider()
 
     # ---------------------------
-    # 📄 PDF DOWNLOAD
+    # 📄 PDF
     # ---------------------------
-    try:
-        pdf_path = generate_pdf(results, explanation)
-        with open(pdf_path, "rb") as f:
-            st.download_button("Download PDF", f, "bias_report.pdf")
-    except Exception as e:
-        st.warning(f"⚠️ PDF error: {e}")
+    pdf_path = generate_pdf(
+        st.session_state.results,
+        st.session_state.explanation,
+        after=st.session_state.get('after', None),
+        mit_explanation=st.session_state.get('mit_explanation', None)
+    )
+    with open(pdf_path, "rb") as f:
+        st.download_button(
+            label="Download Full PDF Report",
+            data=f,
+            file_name="bias_report.pdf",
+            mime="application/pdf"
+        )
 
     st.divider()
 
@@ -196,14 +190,60 @@ if "results" in st.session_state:
 
     if submitted and question:
         with st.spinner("Thinking..."):
-            try:
-                answer = answer_question(question, results)
-                st.success(answer)
-            except Exception as e:
-                st.error(f"❌ Error: {e}")
+            answer = answer_question(question, results)
+            st.success(answer)
 
-else:
-    st.info("Run analysis to see results.")
+# ---------------------------
+# ⚡ FIX BIAS SECTION (OPTIMIZED)
+# ---------------------------
+if st.session_state.results and st.session_state.results["is_biased"]:
+
+    st.divider()
+    st.subheader("Fix the Bias")
+    st.caption("Click below to apply mitigation and see improvement")
+
+    if st.button("Fix Bias Now", type="primary"):
+
+        st.info("⚙️ Running mitigation...")
+
+        with st.spinner("Applying bias mitigation..."):
+            after = run_mitigation(df, label_col, sensitive_col)
+
+        st.success("✅ Mitigation complete!")
+
+        with st.spinner("Generating explanation..."):
+            mit_explanation = get_mitigation_explanation(
+                st.session_state.results, after
+            )
+
+        st.session_state.after = after
+        st.session_state.mitigation_explanation = mit_explanation
+
+# ---------------------------
+# 📊 SHOW MITIGATION RESULTS
+# ---------------------------
+if st.session_state.after:
+
+    before_score = st.session_state.results["bias_score"]
+    after_score = st.session_state.after["after_bias_score"]
+
+    st.subheader("Before vs After Mitigation")
+
+    col1, col2 = st.columns(2)
+
+    col1.metric("Before", before_score)
+    col2.metric("After", after_score)
+
+    improvement = round(before_score - after_score, 3)
+    st.metric("Bias reduction", improvement)
+
+    st.info(st.session_state.mitigation_explanation)
+
+    fig = go.Figure(data=[
+        go.Bar(name='Before', x=['Bias'], y=[before_score]),
+        go.Bar(name='After', x=['Bias'], y=[after_score])
+    ])
+    st.plotly_chart(fig, use_container_width=True)
 
 # ---------------------------
 # 📌 SIDEBAR
