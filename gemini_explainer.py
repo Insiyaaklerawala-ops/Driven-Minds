@@ -3,21 +3,28 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# ---------------------------
+# ✅ LOAD API KEY (Cloud + Local)
+# ---------------------------
 try:
     import streamlit as st
     api_key = st.secrets.get("GROQ_API_KEY", None)
 except Exception:
     api_key = None
 
-# fallback for local
 if not api_key:
     api_key = os.getenv("GROQ_API_KEY")
 
 if not api_key:
     raise ValueError("❌ GROQ_API_KEY not found (Streamlit secrets or .env)")
 
+# ---------------------------
+# ✅ GROQ CLIENT
+# ---------------------------
 from groq import Groq
 client = Groq(api_key=api_key)
+
+MODEL = "llama-3.3-70b-versatile"   # ✅ confirmed working
 
 FALLBACK = (
     "This model shows significant bias — one group is "
@@ -26,8 +33,9 @@ FALLBACK = (
     "This must be addressed before real-world deployment."
 )
 
-MODEL = "llama-3.3-70b-versatile"   # 🔥 recommended
-
+# ---------------------------
+# ✅ CORE CALL FUNCTION
+# ---------------------------
 def _call(prompt: str) -> str:
     try:
         response = client.chat.completions.create(
@@ -39,6 +47,10 @@ def _call(prompt: str) -> str:
     except Exception as e:
         return FALLBACK + f" (Error: {str(e)[:80]})"
 
+
+# ---------------------------
+# ✅ EXPLAIN BIAS
+# ---------------------------
 def explain_bias(results: dict) -> str:
     prompt = f"""Explain these AI bias results in 3 simple sentences
 to a non-technical person. No jargon.
@@ -53,28 +65,21 @@ Explain what the model predicts, what the bias means for
 real people, and one way to fix it."""
     return _call(prompt)
 
+
+# ---------------------------
+# ✅ Q&A FUNCTION
+# ---------------------------
 def answer_question(question: str, results: dict) -> str:
     prompt = f"""Bias report: {results}
 User question: {question}
 Answer in 2 simple sentences. No technical terms."""
     return _call(prompt)
 
-def explain_mitigation(before: dict, after: dict) -> str:
-    pct = round(
-        (before['bias_score'] - after['after_bias_score'])
-        / before['bias_score'] * 100
-    )
-    prompt = f"""Bias improved by {pct}%.
-Before fix: bias score {before['bias_score']}
-After fix: bias score {after['after_bias_score']}
-Explain in 3 simple sentences what was done and
-whether the model is now safe to use. No jargon."""
-    return _call(prompt)
-def explain_mitigation(before: dict, after: dict) -> str:
-    """
-    Explains what mitigation did — compares before and after.
-    """
 
+# ---------------------------
+# ✅ MITIGATION EXPLAINER
+# ---------------------------
+def explain_mitigation(before: dict, after: dict) -> str:
     improvement = round(
         before['bias_score'] - after['after_bias_score'], 3
     )
@@ -108,11 +113,10 @@ No mentions of algorithm names.
 
     try:
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",   # ✅ your working model
+            model=MODEL,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=200
         )
         return response.choices[0].message.content
-
     except Exception as e:
         return f"⚠️ Could not generate explanation: {str(e)}"
