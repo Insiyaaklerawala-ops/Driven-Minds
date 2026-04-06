@@ -97,21 +97,21 @@ def analyze_bias(df, label_col, sensitive_col):
         sensitive_features=s_te
     )
 
-    # Group rates
+       # Group rates
     group_rates = {}
     for g in s_te.unique():
         mask = s_te == g
         group_rates[str(g)] = round(float(y_pred[mask].mean()), 3)
 
-   return {
-    "accuracy": round(acc * 100, 1),
-    "bias_score": round(abs(dpd), 3),
-    "raw_dpd": round(dpd, 3),
-    "groups": list(s_te.unique()),
-    "group_rates": group_rates,
-    "is_biased": abs(dpd) > 0.1,
-    "sensitive_col": sensitive_col   # ✅ ADD THIS
-}
+    return {
+        "accuracy": round(acc * 100, 1),
+        "bias_score": round(abs(dpd), 3),
+        "raw_dpd": round(dpd, 3),
+        "groups": list(s_te.unique()),
+        "group_rates": group_rates,
+        "is_biased": abs(dpd) > 0.1,
+        "sensitive_col": sensitive_col
+    }
 
 
 # ---------------------------
