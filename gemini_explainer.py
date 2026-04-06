@@ -1,17 +1,22 @@
-from groq import Groq
-from dotenv import load_dotenv
 import os
+from dotenv import load_dotenv
 
 load_dotenv()
 
 try:
     import streamlit as st
     api_key = st.secrets.get("GROQ_API_KEY", None)
-    if not api_key:
-        api_key = os.getenv("GROQ_API_KEY")
 except Exception:
+    api_key = None
+
+# fallback for local
+if not api_key:
     api_key = os.getenv("GROQ_API_KEY")
 
+if not api_key:
+    raise ValueError("❌ GROQ_API_KEY not found (Streamlit secrets or .env)")
+
+from groq import Groq
 client = Groq(api_key=api_key)
 
 FALLBACK = (
