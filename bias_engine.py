@@ -1,89 +1,88 @@
-import pandas as pd 
-import os
+import pandas as pd
 
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.pipeline import Pipeline
-from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import LabelEncoder
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
 
 from fairlearn.metrics import (
     demographic_parity_difference,
     equalized_odds_difference
 )
+
+from fairlearn.reductions import ExponentiatedGradient, DemographicParity
+
+
+# ---------------------------
+# ✅ CLEAN TARGET
+# ---------------------------
+def clean_target(y):
+    y = y.astype(str).str.strip()
+
+    mapping = {
+        '>50K': 1, '<=50K': 0,
+        'yes': 1, 'no': 0,
+        'true': 1, 'false': 0,
+        '1': 1, '0': 0
+    }
+
+    y = y.map(mapping)
+
+    valid = y.notna()
+    return y[valid].astype(int), valid
+
+
+# ---------------------------
+# ✅ ENCODE FEATURES
+# ---------------------------
+def encode_features(X):
+    for col in X.select_dtypes(include='object').columns:
+        X[col] = LabelEncoder().fit_transform(X[col].astype(str))
+    return X.fillna(0)
+
+
+# ---------------------------
+# ✅ ANALYZE BIAS (STRONG MODEL)
+# ---------------------------
 def analyze_bias(df, label_col, sensitive_col):
     df = df.copy()
 
-    # ---------------------------
-    # ✅ TARGET CLEANING (GENERIC)
-    # ---------------------------
-    y = pd.to_numeric(df[label_col], errors='coerce')
+    # Target
+    y_raw = df[label_col]
+    y, valid_idx = clean_target(y_raw)
+    df = df.loc[valid_idx]
 
-    # Drop invalid
-    valid_idx = y.notna()
-    df = df.loc[valid_idx].copy()
-    y = y.loc[valid_idx].astype(int)
-
-    # Ensure binary
-    y = y[y.isin([0, 1])]
-    df = df.loc[y.index]
-
-    if len(df) < 30:
-        print("⚠️ Warning: dataset small after cleaning")
-
-    # ---------------------------
-    # ✅ SENSITIVE FEATURE
-    # ---------------------------
+    # Features
     sensitive = df[sensitive_col].astype(str).fillna("Unknown")
+    X = df.drop(columns=[label_col, sensitive_col])
 
-    # ---------------------------
-    # ✅ FEATURES
-    # ---------------------------
-    X = df.drop(columns=[label_col, sensitive_col]).copy()
+    X = encode_features(X)
 
-    # Keep only numeric
-    X = X.select_dtypes(include=['number'])
+    if len(X) < 20:
+        raise ValueError("❌ Dataset too small after cleaning")
 
-    # Fill numeric safely
-    X = X.fillna(0)
+    print("Rows:", len(X))
 
-    if len(X) < 10:
-        raise ValueError("Not enough data after preprocessing")
-
-    # ---------------------------
-    # ✅ SPLIT
-    # ---------------------------
+    # Split
     X_tr, X_te, y_tr, y_te, s_tr, s_te = train_test_split(
         X, y, sensitive, test_size=0.2, random_state=42
     )
 
-    # ---------------------------
-    # ✅ MODEL
-    # ---------------------------
-    model = Pipeline([
-        ("scaler", StandardScaler()),
-        ("clf", LogisticRegression(max_iter=1000))
-    ])
+    # 🔥 STRONG MODEL (no convergence issues)
+    model = RandomForestClassifier(
+        n_estimators=200,
+        max_depth=10,
+        random_state=42
+    )
 
     model.fit(X_tr, y_tr)
     y_pred = model.predict(X_te)
 
-    # ---------------------------
-    # ✅ SAFETY CHECK
-    # ---------------------------
+    # Safety check
     if len(set(y_te)) < 2 or len(set(y_pred)) < 2:
-        return {
-            "accuracy": 0,
-            "bias_score": 0,
-            "is_biased": False,
-            "groups": list(s_te.unique()),
-            "sensitive_col": sensitive_col,
-            "note": "Only one class predicted"
-        }
+        return {"note": "Only one class predicted"}
 
-    # ---------------------------
-    # ✅ METRICS
-    # ---------------------------
+    # Metrics
     acc = accuracy_score(y_te, y_pred)
 
     dpd = demographic_parity_difference(
@@ -98,22 +97,65 @@ def analyze_bias(df, label_col, sensitive_col):
         sensitive_features=s_te
     )
 
-    # ---------------------------
-    # ✅ OUTPUT
-    # ---------------------------
-    # Add per-group positive prediction rates
+    # Group rates
     group_rates = {}
-    for group in s_te.unique():
-        mask = s_te == group
-        rate = y_pred[mask].mean()
-        group_rates[str(group)] = round(float(rate), 3)
+    for g in s_te.unique():
+        mask = s_te == g
+        group_rates[str(g)] = round(float(y_pred[mask].mean()), 3)
 
     return {
-        "accuracy":      round(accuracy_score(y_te, y_pred)*100, 1),
-        "bias_score":    round(abs(dpd), 3),
-        "raw_dpd":       round(dpd, 3),
-        "sensitive_col": sensitive_col,
-        "groups":        list(s_te.unique()),
-        "group_rates":   group_rates,
-        "is_biased":     abs(dpd) > 0.1
+        "accuracy": round(acc * 100, 1),
+        "bias_score": round(abs(dpd), 3),
+        "raw_dpd": round(dpd, 3),
+        "groups": list(s_te.unique()),
+        "group_rates": group_rates,
+        "is_biased": abs(dpd) > 0.1
+    }
+
+
+# ---------------------------
+# ✅ MITIGATE BIAS (FAIR MODEL)
+# ---------------------------
+def mitigate_bias(df, label_col, sensitive_col):
+    df = df.copy()
+
+    # Clean
+    y_raw = df[label_col]
+    y, valid_idx = clean_target(y_raw)
+    df = df.loc[valid_idx]
+
+    sensitive = df[sensitive_col]
+    X = df.drop(columns=[label_col, sensitive_col])
+
+    X = encode_features(X)
+
+    # Split
+    X_tr, X_te, y_tr, y_te, s_tr, s_te = train_test_split(
+        X, y, sensitive, test_size=0.2, random_state=42
+    )
+
+    # Base model (must be compatible with Fairlearn)
+    base_model = RandomForestClassifier(n_estimators=100, random_state=42)
+
+    fair_model = ExponentiatedGradient(
+        estimator=base_model,
+        constraints=DemographicParity()
+    )
+
+    print("⚖️ Training fair model...")
+
+    fair_model.fit(X_tr, y_tr, sensitive_features=s_tr)
+
+    y_pred_fair = fair_model.predict(X_te)
+
+    new_dpd = demographic_parity_difference(
+        y_te, y_pred_fair, sensitive_features=s_te
+    )
+
+    new_acc = accuracy_score(y_te, y_pred_fair)
+
+    return {
+        "after_bias_score": round(abs(new_dpd), 3),
+        "after_accuracy": round(new_acc * 100, 1),
+        "is_fixed": abs(new_dpd) <= 0.1
     }
