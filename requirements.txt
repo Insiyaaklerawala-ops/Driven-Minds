@@ -4,5 +4,6 @@ scikit-learn==1.4.2
 fairlearn==0.10.0
 plotly==5.22.0
 python-dotenv==1.0.1
-google-generativeai==0.5.4
+groq
 fpdf==1.7.2
+
