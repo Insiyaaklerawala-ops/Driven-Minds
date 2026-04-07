@@ -85,6 +85,7 @@ sensitive_col = col2.selectbox(
     [col for col in df.columns if col != label_col]
 )
 
+# Prevent same column
 if label_col == sensitive_col:
     st.error("Target and sensitive column cannot be the same.")
     st.stop()
@@ -104,6 +105,8 @@ if st.button("Analyze Bias", type="primary"):
 
     with st.spinner("Analyzing... please wait"):
         try:
+            st.session_state.results = analyze_bias(df, label_col, sensitive_col)
+            st.session_state.explanation = explain_bias(st.session_state.results)
             results, explanation = run_analysis(df, label_col, sensitive_col)
         except Exception as e:
             st.error(f"Analysis failed: {str(e)}")
@@ -116,85 +119,129 @@ if st.button("Analyze Bias", type="primary"):
 # ---------------------------
 # 📊 SHOW RESULTS
 # ---------------------------
-if st.session_state.results is not None:
+if "results" in st.session_state:
+    if st.session_state.results is not None:
 
-    results = st.session_state.results
-    explanation = st.session_state.explanation
+        results = st.session_state.results
+        explanation = st.session_state.explanation
 
-    st.subheader("Results")
+        st.subheader("Results")
 
-    c1, c2, c3 = st.columns(3)
+        c1, c2, c3 = st.columns(3)
 
-    c1.metric("Model Accuracy", f"{results.get('accuracy', 'N/A')}%")
+        c1.metric("Model Accuracy", f"{results.get('accuracy', 'N/A')}%")
 
-    c2.metric(
-        "Bias Score",
-        results.get("bias_score", "N/A"),
-        delta="Above threshold" if results.get("is_biased") else "Below threshold",
-        delta_color="inverse"
-    )
-
-    verdict = "Bias Found" if results.get("is_biased") else "Looks Fair"
-
-    c3.metric(
-        "Verdict",
-        verdict,
-        delta="Needs attention" if results.get("is_biased") else "All good",
-        delta_color="inverse"
-    )
-
-    st.info(f"AI Analysis: {explanation}")
-
-    # ---------------------------
-    # 📈 VISUALIZATION
-    # ---------------------------
-    group_rates = results.get("group_rates", {})
-
-    if group_rates:
-        fig = px.bar(
-            x=list(group_rates.keys()),
-            y=list(group_rates.values()),
-            title="Prediction rate per group",
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-    st.divider()
-
-    # ---------------------------
-    # 📄 PDF
-    # ---------------------------
-    pdf_path = generate_pdf(
-        st.session_state.results,
-        st.session_state.explanation,
-        after=st.session_state.get('after', None),
-        mit_explanation=st.session_state.get('mit_explanation', None)
-    )
-    with open(pdf_path, "rb") as f:
-        st.download_button(
-            label="Download Full PDF Report",
-            data=f,
-            file_name="bias_report.pdf",
-            mime="application/pdf"
+        c2.metric(
+            "Bias Score",
+            results.get("bias_score", "N/A"),
+            delta="Above threshold" if results.get("is_biased") else "Below threshold",
+            delta_color="inverse"
         )
 
-    st.divider()
+        verdict = "Bias Found" if results.get("is_biased") else "Looks Fair"
 
-    # ---------------------------
-    # 💬 CHAT
-    # ---------------------------
-    st.subheader("Ask about this report")
+        c3.metric(
+            "Verdict",
+            verdict,
+            delta="Needs attention" if results.get("is_biased") else "All good",
+            delta_color="inverse"
+        )
 
-    with st.form("chat_form"):
-        question = st.text_input("Ask a question")
-        submitted = st.form_submit_button("Get Answer")
+        st.info(f"AI Analysis: {explanation}")
 
-    if submitted and question:
-        with st.spinner("Thinking..."):
-            answer = answer_question(question, results)
-            st.success(answer)
+        # ---------------------------
+        # 📈 VISUALIZATION
+        # ---------------------------
+        groups = results.get("groups", [])
+        bias_score = results.get("bias_score", 0)
+        group_rates = results.get("group_rates", {})
+
+        if group_rates:
+            fig = px.bar(
+                x=list(group_rates.keys()),
+                y=list(group_rates.values()),
+                labels={
+                    "x": results.get("sensitive_col", ""),
+                    "y": "Positive prediction rate"
+                },
+                title=f"Prediction rate per group — {results.get('sensitive_col', '')}",
+                color=list(group_rates.values()),
+                color_continuous_scale=["#E24B4A", "#EF9F27", "#1D9E75"]
+            )
+
+            fig.update_layout(coloraxis_showscale=False)
+
+            fig.add_hline(
+                y=sum(group_rates.values()) / len(group_rates),
+                line_dash="dash",
+                annotation_text="Average rate"
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
+
+        elif groups:
+            color = "#E24B4A" if results.get("is_biased") else "#1D9E75"
+
+            fig = px.bar(
+                x=groups,
+                y=[bias_score] * len(groups),
+                labels={
+                    "x": results.get("sensitive_col", ""),
+                    "y": "Bias score"
+                },
+                title=f"Bias across {results.get('sensitive_col', '')}",
+                color_discrete_sequence=[color]
+            )
+
+            fig.add_hline(y=0.1, line_dash="dash", annotation_text="Bias threshold")
+
+            st.plotly_chart(fig, use_container_width=True)
+
+        st.divider()
+
+        # ---------------------------
+        # 📄 PDF
+        # ---------------------------
+        
+        pdf_path = generate_pdf(
+            st.session_state.results,
+            st.session_state.explanation,
+            after=st.session_state.get('after', None),
+            mit_explanation=st.session_state.get('mitigation_explanation', None)
+        )
+
+        with open(pdf_path, "rb") as f:
+            st.download_button(
+                label="Download Full PDF Report",
+                data=f,
+                file_name="bias_report.pdf",
+                mime="application/pdf"
+            )
+
+        st.divider()
+
+        # ---------------------------
+        # 💬 CHAT
+        # ---------------------------
+        st.subheader("Ask about this report")
+
+        with st.form("chat_form"):
+            question = st.text_input("Ask a question")
+            submitted = st.form_submit_button("Get Answer")
+
+        if submitted and question:
+            with st.spinner("Thinking..."):
+                try:
+                    answer = answer_question(question, results)
+                    st.success(answer)
+                except Exception as e:
+                    st.error(f"❌ Error: {e}")
+
+else:
+    st.info("Run analysis to see results.")
 
 # ---------------------------
-# ⚡ FIX BIAS SECTION (OPTIMIZED)
+# ⚡ FIX BIAS SECTION
 # ---------------------------
 if st.session_state.results and st.session_state.results["is_biased"]:
 
@@ -249,20 +296,44 @@ if st.session_state.after:
 # 📌 SIDEBAR
 # ---------------------------
 with st.sidebar:
-    st.header("About this tool")
+    st.header("How to use")
+
     st.markdown("""
-This tool detects **hidden bias** in AI models.
+**Step 1:** Upload a CSV file
 
-**How it works:**
-1. Upload dataset  
-2. Choose prediction column  
-3. Choose sensitive attribute  
-4. Model is trained  
-5. Bias is measured + explained  
+**Step 2:** Select the prediction column
+(what the AI is predicting)
 
-**Bias score guide:**
-- 0.00 – 0.05 → No bias  
-- 0.05 – 0.10 → Minor bias  
-- 0.10 – 0.20 → Significant bias  
-- 0.20+ → Severe bias  
+**Step 3:** Select the bias column
+(which group to check for unfairness)
+
+**Step 4:** Click Analyze Bias
 """)
+
+    st.divider()
+    st.markdown("**Quick start examples:**")
+    st.markdown("""
+**Adult Income dataset:**
+- Predict: `income`
+- Check bias: `gender` or `race`
+
+**COMPAS dataset:**
+- Predict: `two_year_recid`
+- Check bias: `race`
+
+**German Credit dataset:**
+- Predict: `Risk`
+- Check bias: `Sex`
+""")
+
+    st.divider()
+    st.markdown("**What does the bias score mean?**")
+    st.markdown("""
+- `0.00 – 0.05` → No significant bias
+- `0.05 – 0.10` → Minor bias
+- `0.10 – 0.20` → Significant bias
+- `0.20+` → Severe bias — action required
+""")
+
+    st.divider()
+    st.caption("Built with Fairlearn + Groq AI")
