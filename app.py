@@ -1,4 +1,93 @@
+
 import streamlit as st
+import streamlit_authenticator as stauth
+
+# ✅ FIX: page config must be first Streamlit command
+st.set_page_config(
+    page_title="Unbiased AI",
+    page_icon="⚖️",
+    layout="wide"
+)
+
+# ── CREDENTIALS ──────────────────────────────────
+credentials = {
+    "usernames": {
+        "admin": {
+            "name": "Admin User",
+            "password": "$2b$12$ZaA6lm2.7JFN2p2ylpbkau5dRy/MYq26V/ZkvfEed78ff6FRsyx0K"
+        },
+        "demo": {
+            "name": "Demo User",
+            "password": "$2b$12$KYTLfQzv31hC6DCP2pGtoepu9yocDEXp61hCPzBpc7Fu6f0kRUL.u"
+        },
+        "judge": {
+            "name": "Judge",
+            "password": "$2b$12$5cK4b28NMwsQ9RQ595kG5eh2psrlGMRCoFu1VCbOo8SC3OGWE1jxG"
+        }
+    }
+}
+
+# ── AUTHENTICATOR SETUP ───────────────────────────
+import os
+cookie_key = st.secrets.get("COOKIE_KEY", "abcdef123456")
+
+authenticator = stauth.Authenticate(
+    credentials,
+    "unbiased_ai_cookie",
+    cookie_key,
+    cookie_expiry_days=1
+)
+# Add this before the login form
+with st.expander("Demo credentials — click to see"):
+    st.markdown("""
+| Username | Password | Role |
+|----------|----------|------|
+| demo | demo123 | Demo user |
+| judge | judge123 | Judge access |
+| admin | admin123 | Full access |
+""")
+    
+
+# ── LOGIN FORM ────────────────────────────────────
+st.markdown("""
+<div style="background:#1D9E75;padding:18px 24px;
+            border-radius:10px;margin-bottom:20px">
+    <h1 style="color:white;margin:0;font-size:26px">
+        ⚖️ Unbiased AI
+    </h1>
+    <p style="color:#d0f5ea;margin:4px 0 0;font-size:14px">
+        Detect and fix hidden discrimination in AI systems
+    </p>
+</div>
+""", unsafe_allow_html=True)
+
+authenticator.login(location="main")
+
+name = st.session_state.get("name")
+auth_status = st.session_state.get("authentication_status")
+username = st.session_state.get("username")
+
+# ── HANDLE LOGIN STATES ───────────────────────────
+if auth_status is False:
+    st.error("Username or password is incorrect")
+    st.info("Demo credentials — Username: demo | Password: demo123")
+    st.stop()
+
+if auth_status is None:
+    st.warning("Please enter your username and password")
+    st.info("Demo credentials — Username: demo | Password: demo123")
+    st.stop()
+
+# ── LOGGED IN — show the rest of the app ─────────
+st.success(f"Welcome {name}!")
+
+# Logout button in sidebar
+with st.sidebar:
+    authenticator.logout("Logout", "sidebar")
+    st.write(f"Logged in as: **{username}**")
+
+# ── REST OF YOUR APP GOES HERE ────────────────────
+# Everything below this line only shows after login
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -23,7 +112,6 @@ def run_mitigation(df, label_col, sensitive_col):
 @st.cache_data
 def get_mitigation_explanation(before, after):
     return explain_mitigation(before, after)
-
 # ---------------------------
 # ✅ SESSION STATE INIT
 # ---------------------------
@@ -33,15 +121,6 @@ for key in ["results", "explanation", "after", "mitigation_explanation"]:
 
 # ---------------------------
 # ⚙️ CONFIG
-# ---------------------------
-st.set_page_config(
-    page_title="Unbiased AI",
-    page_icon="⚖️",
-    layout="wide"
-)
-
-# ---------------------------
-# 🎨 HEADER
 # ---------------------------
 st.title("⚖️ Unbiased AI — Bias Detector")
 st.caption("Detect and explain hidden discrimination in AI decision systems")

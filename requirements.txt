@@ -6,4 +6,4 @@ plotly==5.22.0
 python-dotenv==1.0.1
 groq
 fpdf==1.7.2
-
+streamlit-authenticator
