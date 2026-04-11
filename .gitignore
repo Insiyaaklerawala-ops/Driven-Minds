@@ -35,3 +35,4 @@ venv/
 # ⚙️ Streamlit config (optional)
 # ---------------------------
 .streamlit/
+.streamlit/secrets.toml
