@@ -12,14 +12,6 @@ st.set_page_config(
 # ── CREDENTIALS ──────────────────────────────────
 credentials = {
     "usernames": {
-        "admin": {
-            "name": "Admin User",
-            "password": "$2b$12$ZaA6lm2.7JFN2p2ylpbkau5dRy/MYq26V/ZkvfEed78ff6FRsyx0K"
-        },
-        "demo": {
-            "name": "Demo User",
-            "password": "$2b$12$KYTLfQzv31hC6DCP2pGtoepu9yocDEXp61hCPzBpc7Fu6f0kRUL.u"
-        },
         "judge": {
             "name": "Judge",
             "password": "$2b$12$5cK4b28NMwsQ9RQ595kG5eh2psrlGMRCoFu1VCbOo8SC3OGWE1jxG"
@@ -42,9 +34,7 @@ with st.expander("Demo credentials — click to see"):
     st.markdown("""
 | Username | Password | Role |
 |----------|----------|------|
-| demo | demo123 | Demo user |
 | judge | judge123 | Judge access |
-| admin | admin123 | Full access |
 """)
     
 
@@ -70,12 +60,12 @@ username = st.session_state.get("username")
 # ── HANDLE LOGIN STATES ───────────────────────────
 if auth_status is False:
     st.error("Username or password is incorrect")
-    st.info("Demo credentials — Username: demo | Password: demo123")
+    st.info("Demo credentials — Username: demo | Password: judge123")
     st.stop()
 
 if auth_status is None:
     st.warning("Please enter your username and password")
-    st.info("Demo credentials — Username: demo | Password: demo123")
+    st.info("Demo credentials — Username: judge | Password: demo123")
     st.stop()
 
 # ── LOGGED IN — show the rest of the app ─────────
