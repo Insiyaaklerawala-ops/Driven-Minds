@@ -60,12 +60,12 @@ username = st.session_state.get("username")
 # ── HANDLE LOGIN STATES ───────────────────────────
 if auth_status is False:
     st.error("Username or password is incorrect")
-    st.info("Demo credentials — Username: demo | Password: judge123")
+    st.info("Demo credentials — Username: judge | Password: judge123")
     st.stop()
 
 if auth_status is None:
     st.warning("Please enter your username and password")
-    st.info("Demo credentials — Username: judge | Password: demo123")
+    st.info("Demo credentials — Username: judge | Password: judge123")
     st.stop()
 
 # ── LOGGED IN — show the rest of the app ─────────
