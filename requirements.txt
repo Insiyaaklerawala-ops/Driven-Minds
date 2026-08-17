@@ -1,9 +1,0 @@
-streamlit==1.32.2
-pandas==2.2.2
-scikit-learn==1.4.2
-fairlearn==0.10.0
-plotly==5.22.0
-python-dotenv==1.0.1
-groq
-fpdf==1.7.2
-streamlit-authenticator

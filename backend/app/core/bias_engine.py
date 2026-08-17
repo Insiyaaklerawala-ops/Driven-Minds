@@ -1,3 +1,4 @@
+import logging
 import pandas as pd
 
 from sklearn.model_selection import train_test_split
@@ -9,14 +10,16 @@ from fairlearn.metrics import (
     demographic_parity_difference,
     equalized_odds_difference
 )
-
 from fairlearn.reductions import ExponentiatedGradient, DemographicParity
 
+logger = logging.getLogger(__name__)
+
 
 # ---------------------------
-# ✅ CLEAN TARGET
+# CLEAN TARGET
 # ---------------------------
-def clean_target(y):
+def clean_target(y: pd.Series):
+    """Normalize a raw label column into binary 0/1 + a validity mask."""
     y = y.astype(str).str.strip()
 
     mapping = {
@@ -27,24 +30,28 @@ def clean_target(y):
     }
 
     y = y.map(mapping)
-
     valid = y.notna()
     return y[valid].astype(int), valid
 
 
 # ---------------------------
-# ✅ ENCODE FEATURES
+# ENCODE FEATURES
 # ---------------------------
-def encode_features(X):
+def encode_features(X: pd.DataFrame) -> pd.DataFrame:
+    """Label-encode all object columns and fill missing values."""
     for col in X.select_dtypes(include='object').columns:
         X[col] = LabelEncoder().fit_transform(X[col].astype(str))
     return X.fillna(0)
 
 
 # ---------------------------
-# ✅ ANALYZE BIAS (STRONG MODEL)
+# ANALYZE BIAS (STRONG MODEL)
 # ---------------------------
-def analyze_bias(df, label_col, sensitive_col):
+def analyze_bias(df: pd.DataFrame, label_col: str, sensitive_col: str) -> dict:
+    """
+    Train a classifier on the given dataframe and measure demographic
+    parity / equalized odds bias with respect to `sensitive_col`.
+    """
     df = df.copy()
 
     # Target
@@ -55,30 +62,27 @@ def analyze_bias(df, label_col, sensitive_col):
     # Features
     sensitive = df[sensitive_col].astype(str).fillna("Unknown")
     X = df.drop(columns=[label_col, sensitive_col])
-
     X = encode_features(X)
 
     if len(X) < 20:
-        raise ValueError("❌ Dataset too small after cleaning")
+        raise ValueError("Dataset too small after cleaning (fewer than 20 valid rows)")
 
-    print("Rows:", len(X))
+    logger.info("analyze_bias: %d rows after cleaning", len(X))
 
     # Split
     X_tr, X_te, y_tr, y_te, s_tr, s_te = train_test_split(
         X, y, sensitive, test_size=0.2, random_state=42
     )
 
-    # 🔥 STRONG MODEL (no convergence issues)
+    # Model
     model = RandomForestClassifier(
         n_estimators=200,
         max_depth=10,
         random_state=42
     )
-
     model.fit(X_tr, y_tr)
     y_pred = model.predict(X_te)
 
-    # Safety check
     if len(set(y_te)) < 2 or len(set(y_pred)) < 2:
         return {"note": "Only one class predicted"}
 
@@ -97,7 +101,7 @@ def analyze_bias(df, label_col, sensitive_col):
         sensitive_features=s_te
     )
 
-       # Group rates
+    # Group rates
     group_rates = {}
     for g in s_te.unique():
         mask = s_te == g
@@ -107,6 +111,7 @@ def analyze_bias(df, label_col, sensitive_col):
         "accuracy": round(acc * 100, 1),
         "bias_score": round(abs(dpd), 3),
         "raw_dpd": round(dpd, 3),
+        "equalized_odds_diff": round(eod, 3),
         "groups": list(s_te.unique()),
         "group_rates": group_rates,
         "is_biased": abs(dpd) > 0.1,
@@ -115,59 +120,52 @@ def analyze_bias(df, label_col, sensitive_col):
 
 
 # ---------------------------
-# ✅ MITIGATE BIAS (FAIR MODEL)
+# MITIGATE BIAS (FAIR MODEL, OPTIMIZED)
 # ---------------------------
-# ---------------------------
-# ⚡ FAST MITIGATE BIAS (OPTIMIZED)
-# ---------------------------
-def mitigate_bias(df, label_col, sensitive_col):
+def mitigate_bias(df: pd.DataFrame, label_col: str, sensitive_col: str) -> dict:
+    """
+    Retrain using fairlearn's ExponentiatedGradient reduction to reduce
+    demographic parity difference, and report the improved metrics.
+    """
     df = df.copy()
 
-    # Clean
     y_raw = df[label_col]
     y, valid_idx = clean_target(y_raw)
     df = df.loc[valid_idx]
 
     sensitive = df[sensitive_col]
     X = df.drop(columns=[label_col, sensitive_col])
-
     X = encode_features(X)
 
-    # 🔥 Reduce dataset size for speed (BIG BOOST)
+    # Cap dataset size for speed
     if len(X) > 5000:
         X = X.sample(5000, random_state=42)
         y = y.loc[X.index]
         sensitive = sensitive.loc[X.index]
 
-    # Split
     X_tr, X_te, y_tr, y_te, s_tr, s_te = train_test_split(
         X, y, sensitive, test_size=0.2, random_state=42
     )
 
-    # ⚡ LIGHTER MODEL (FASTER)
     base_model = RandomForestClassifier(
-        n_estimators=30,   # 🔥 reduced from 100
-        max_depth=6,       # 🔥 limit depth
+        n_estimators=30,
+        max_depth=6,
         random_state=42
     )
 
-    # ⚡ LIMIT ITERATIONS (HUGE SPEED BOOST)
     fair_model = ExponentiatedGradient(
         estimator=base_model,
         constraints=DemographicParity(),
-        max_iter=10   # 🔥 default is much higher
+        max_iter=10
     )
 
-    print("⚡ Fast fairness training...")
-
+    logger.info("mitigate_bias: starting fairness-constrained training")
     fair_model.fit(X_tr, y_tr, sensitive_features=s_tr)
-
     y_pred_fair = fair_model.predict(X_te)
 
     new_dpd = demographic_parity_difference(
         y_te, y_pred_fair, sensitive_features=s_te
     )
-
     new_acc = accuracy_score(y_te, y_pred_fair)
 
     return {

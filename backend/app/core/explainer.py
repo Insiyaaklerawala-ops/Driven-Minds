@@ -1,30 +1,17 @@
 import os
+import logging
 from dotenv import load_dotenv
-
-load_dotenv()
-
-# ---------------------------
-# ✅ LOAD API KEY (Cloud + Local)
-# ---------------------------
-try:
-    import streamlit as st
-    api_key = st.secrets.get("GROQ_API_KEY", None)
-except Exception:
-    api_key = None
-
-if not api_key:
-    api_key = os.getenv("GROQ_API_KEY")
-
-if not api_key:
-    raise ValueError("❌ GROQ_API_KEY not found (Streamlit secrets or .env)")
-
-# ---------------------------
-# ✅ GROQ CLIENT
-# ---------------------------
 from groq import Groq
-client = Groq(api_key=api_key)
 
-MODEL = "llama-3.3-70b-versatile"   # ✅ confirmed working
+load_dotenv(os.path.join(os.path.dirname(__file__), "../../.env"))
+logger = logging.getLogger(__name__)
+
+api_key = os.getenv("GROQ_API_KEY")
+if not api_key:
+    raise ValueError("GROQ_API_KEY not found in environment (.env)")
+
+client = Groq(api_key=api_key)
+MODEL = "llama-3.3-70b-versatile"
 
 FALLBACK = (
     "This model shows significant bias — one group is "
@@ -33,24 +20,20 @@ FALLBACK = (
     "This must be addressed before real-world deployment."
 )
 
-# ---------------------------
-# ✅ CORE CALL FUNCTION
-# ---------------------------
-def _call(prompt: str) -> str:
+
+def _call(prompt: str, max_tokens: int = 300) -> str:
     try:
         response = client.chat.completions.create(
             model=MODEL,
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=300
+            max_tokens=max_tokens
         )
         return response.choices[0].message.content
     except Exception as e:
+        logger.error("Groq call failed: %s", e)
         return FALLBACK + f" (Error: {str(e)[:80]})"
 
 
-# ---------------------------
-# ✅ EXPLAIN BIAS
-# ---------------------------
 def explain_bias(results: dict) -> str:
     prompt = f"""Explain these AI bias results in 3 simple sentences
 to a non-technical person. No jargon.
@@ -66,24 +49,15 @@ real people, and one way to fix it."""
     return _call(prompt)
 
 
-# ---------------------------
-# ✅ Q&A FUNCTION
-# ---------------------------
 def answer_question(question: str, results: dict) -> str:
     prompt = f"""Bias report: {results}
 User question: {question}
 Answer in 2 simple sentences. No technical terms."""
-    return _call(prompt)
+    return _call(prompt, max_tokens=200)
 
 
-# ---------------------------
-# ✅ MITIGATION EXPLAINER
-# ---------------------------
 def explain_mitigation(before: dict, after: dict) -> str:
-    improvement = round(
-        before['bias_score'] - after['after_bias_score'], 3
-    )
-
+    improvement = round(before['bias_score'] - after['after_bias_score'], 3)
     pct_improvement = round(
         (improvement / before['bias_score']) * 100
     ) if before['bias_score'] > 0 else 0
@@ -110,13 +84,4 @@ Explain in 3-4 sentences:
 Use plain language. No technical jargon.
 No mentions of algorithm names.
 """
-
-    try:
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=200
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        return f"⚠️ Could not generate explanation: {str(e)}"
+    return _call(prompt, max_tokens=200)

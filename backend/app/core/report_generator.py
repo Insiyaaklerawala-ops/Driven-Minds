@@ -1,13 +1,25 @@
-from fpdf import FPDF
+import os
+import uuid
 import datetime
+from fpdf import FPDF
 
-# ✅ Function to clean unsupported Unicode characters
-def clean_text(text):
-    return str(text).replace("—", "-").replace("–", "-").replace("“", '"').replace("”", '"')
+REPORTS_DIR = "generated_reports"
+os.makedirs(REPORTS_DIR, exist_ok=True)
+
+
+def clean_text(text) -> str:
+    return (
+        str(text)
+        .replace("—", "-")
+        .replace("–", "-")
+        .replace("\u201c", '"')
+        .replace("\u201d", '"')
+    )
+
 
 def generate_pdf(results: dict, explanation: str,
-                 after: dict = None,
-                 mit_explanation: str = None) -> str:
+                  after: dict = None,
+                  mit_explanation: str = None) -> str:
     pdf = FPDF()
     pdf.add_page()
 
@@ -15,39 +27,32 @@ def generate_pdf(results: dict, explanation: str,
     pdf.set_font("Helvetica", "B", 18)
     pdf.cell(0, 12, "Unbiased AI - Bias Detection Report", ln=True)
 
-    # DATE in small grey text
     pdf.set_font("Helvetica", "", 11)
     pdf.set_text_color(130, 130, 130)
     pdf.cell(0, 8, f"Generated on: {datetime.date.today()}", ln=True)
     pdf.ln(4)
 
-    # HORIZONTAL LINE (divider)
     pdf.set_draw_color(200, 200, 200)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(6)
-
-    # Reset text color back to black
     pdf.set_text_color(0, 0, 0)
 
-    # SECTION HEADING
+    # BIAS METRICS
     pdf.set_font("Helvetica", "B", 13)
     pdf.cell(0, 10, "Bias Metrics", ln=True)
 
-    # DATA ROWS
     rows = [
-        ("Model accuracy",   f"{results['accuracy']}%"),
-        ("Bias score",       str(results['bias_score'])),
-        ("Column analyzed",  results['sensitive_col']),
-        ("Groups found",     ", ".join(str(g) for g in results['groups'])),
-        ("Verdict",          "BIASED" if results['is_biased'] else "FAIR"),
+        ("Model accuracy",  f"{results['accuracy']}%"),
+        ("Bias score",      str(results['bias_score'])),
+        ("Column analyzed", results['sensitive_col']),
+        ("Groups found",    ", ".join(str(g) for g in results['groups'])),
+        ("Verdict",         "BIASED" if results['is_biased'] else "FAIR"),
     ]
 
     for label, value in rows:
-        value = clean_text(value)  # ✅ Clean text
-
+        value = clean_text(value)
         pdf.set_font("Helvetica", "B", 11)
         pdf.cell(65, 8, label + ":", ln=False)
-
         pdf.set_font("Helvetica", "", 11)
         pdf.cell(0, 8, value, ln=True)
 
@@ -55,13 +60,11 @@ def generate_pdf(results: dict, explanation: str,
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(6)
 
-    # AI EXPLANATION SECTION
+    # AI EXPLANATION
     pdf.set_font("Helvetica", "B", 13)
     pdf.cell(0, 10, "AI Explanation", ln=True)
-
     pdf.set_font("Helvetica", "", 11)
-    explanation = clean_text(explanation)  # ✅ Clean explanation
-    pdf.multi_cell(0, 7, explanation)
+    pdf.multi_cell(0, 7, clean_text(explanation))
 
     pdf.ln(4)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
@@ -70,7 +73,6 @@ def generate_pdf(results: dict, explanation: str,
     # RECOMMENDATIONS
     pdf.set_font("Helvetica", "B", 13)
     pdf.cell(0, 10, "Recommended Actions", ln=True)
-
     pdf.set_font("Helvetica", "", 11)
 
     if results['is_biased']:
@@ -87,12 +89,9 @@ def generate_pdf(results: dict, explanation: str,
         ]
 
     for action in actions:
-        action = clean_text(action)  # ✅ Clean actions
-        pdf.cell(0, 8, action, ln=True)
+        pdf.cell(0, 8, clean_text(action), ln=True)
 
-    # SAVE PDF
-    path = "bias_report.pdf"
-    # BEFORE / AFTER SECTION (only if mitigation was run)
+    # MITIGATION SECTION
     if after is not None:
         pdf.ln(4)
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
@@ -111,10 +110,8 @@ def generate_pdf(results: dict, explanation: str,
         pdf.set_font("Helvetica", "", 11)
         pdf.cell(0, 8, str(after['after_bias_score']), ln=True)
 
-        improvement = round(
-            results['bias_score'] - after['after_bias_score'], 3
-        )
-        pct = round((improvement / results['bias_score']) * 100)
+        improvement = round(results['bias_score'] - after['after_bias_score'], 3)
+        pct = round((improvement / results['bias_score']) * 100) if results['bias_score'] > 0 else 0
 
         pdf.set_font("Helvetica", "B", 11)
         pdf.cell(65, 8, "Improvement:", ln=False)
@@ -126,31 +123,11 @@ def generate_pdf(results: dict, explanation: str,
             pdf.set_font("Helvetica", "B", 11)
             pdf.cell(0, 8, "What was done:", ln=True)
             pdf.set_font("Helvetica", "", 11)
-            pdf.multi_cell(0, 7, mit_explanation)
+            pdf.multi_cell(0, 7, clean_text(mit_explanation))
+
+    # UNIQUE FILENAME per request — avoids overwrites under concurrent users
+    filename = f"bias_report_{uuid.uuid4().hex}.pdf"
+    path = os.path.join(REPORTS_DIR, filename)
     pdf.output(path)
 
     return path
-
-
-# TEST RUN
-if __name__ == "__main__":
-
-    fake_results = {
-        "accuracy": 85.2,
-        "bias_score": 0.19,
-        "sensitive_col": "gender",
-        "groups": ["Male", "Female"],
-        "is_biased": True
-    }
-
-    fake_explanation = (
-        "This model predicts whether someone earns over $50K per year. "
-        "We found significant gender bias — the model is 19% less likely "
-        "to predict high income for women with the same qualifications "
-        "as men. To fix this, the training data should be rebalanced "
-        "so both genders are equally represented in high-income examples."
-    )
-
-    path = generate_pdf(fake_results, fake_explanation)
-    print(f"PDF created at: {path}")
-    print("Open the file to check it looks correct.")

@@ -1,4 +1,4 @@
-
+'''
 import streamlit as st
 import streamlit_authenticator as stauth
 
@@ -82,9 +82,9 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-from bias_engine import analyze_bias, mitigate_bias
-from gemini_explainer import explain_bias, answer_question, explain_mitigation
-from report_generator import generate_pdf
+from backend.app.core.bias_engine import analyze_bias, mitigate_bias
+from backend.app.core.explainer import explain_bias, answer_question, explain_mitigation
+from backend.app.core.report_generator import generate_pdf
 
 # ---------------------------
 # ⚡ CACHE FUNCTIONS (MAJOR SPEED BOOST)
@@ -405,4 +405,4 @@ with st.sidebar:
 """)
 
     st.divider()
-    st.caption("Built with Fairlearn + Groq AI")
+    st.caption("Built with Fairlearn + Groq AI")'''
