@@ -3,13 +3,13 @@ from fastapi import Depends
 import pandas as pd
 import io
 
-from backend.app.models.schemas import (
+from app.models.schemas import (
     AnalyzeRequest, AnalyzeResponse, UploadResponse
 )
-from backend.app.core.bias_engine import analyze_bias
-from backend.app.core.explainer import explain_bias
-from backend.app.core import session_store
-from backend.app.core.dependencies import require_auth
+from app.core.bias_engine import analyze_bias
+from app.core.explainer import explain_bias
+from app.core import session_store
+from app.core.dependencies import require_auth
 
 router = APIRouter()
 

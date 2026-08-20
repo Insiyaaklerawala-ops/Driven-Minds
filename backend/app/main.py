@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.app.routers import analyze, mitigate, chat, report  # more routers added as we build them
-from backend.app.routers import analyze, mitigate, chat, report, auth
+ # more routers added as we build them
+from app.routers import analyze, mitigate, chat, report, auth
 
 app = FastAPI(title="Unbiased AI API")
 
