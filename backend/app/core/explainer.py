@@ -1,5 +1,6 @@
 import os
 import logging
+import time
 from dotenv import load_dotenv
 from pathlib import Path
 from groq import Groq
@@ -24,16 +25,24 @@ FALLBACK = (
 
 
 def _call(prompt: str, max_tokens: int = 300) -> str:
-    try:
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=max_tokens
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        logger.error("Groq call failed: %s", e)
-        return FALLBACK + f" (Error: {str(e)[:80]})"
+    for attempt in range(2):
+        try:
+            response = client.chat.completions.create(
+                model=MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=max_tokens
+            )
+            return response.choices[0].message.content
+
+        except Exception as e:
+            logger.error("Groq call failed (attempt %s): %s", attempt + 1, e)
+
+            if attempt == 0:
+                time.sleep(2)
+            else:
+                return FALLBACK
+
+    return FALLBACK
 
 
 def explain_bias(results: dict) -> str:
