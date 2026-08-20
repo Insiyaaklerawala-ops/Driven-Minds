@@ -1,9 +1,11 @@
 import os
 import logging
 from dotenv import load_dotenv
+from pathlib import Path
 from groq import Groq
 
-load_dotenv(os.path.join(os.path.dirname(__file__), "../../.env"))
+ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+load_dotenv(ENV_PATH)
 logger = logging.getLogger(__name__)
 
 api_key = os.getenv("GROQ_API_KEY")
@@ -11,7 +13,7 @@ if not api_key:
     raise ValueError("GROQ_API_KEY not found in environment (.env)")
 
 client = Groq(api_key=api_key)
-MODEL = "llama-3.3-70b-versatile"
+MODEL = "groq/compound"
 
 FALLBACK = (
     "This model shows significant bias — one group is "

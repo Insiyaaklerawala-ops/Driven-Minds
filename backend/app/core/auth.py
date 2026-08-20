@@ -1,13 +1,16 @@
 import os
 import datetime
+from pathlib import Path
 
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from dotenv import load_dotenv
 
-load_dotenv()
+ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+load_dotenv(ENV_PATH)
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+
 if not SECRET_KEY:
     raise ValueError("JWT_SECRET_KEY not found in environment (.env)")
 
