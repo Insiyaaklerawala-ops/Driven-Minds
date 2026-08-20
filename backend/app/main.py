@@ -8,7 +8,10 @@ app = FastAPI(title="Unbiased AI API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # add your deployed frontend URL later
+    allow_origins=[
+        "http://localhost:3000",
+        "https://unbiased-ai.vercel.app",  # your actual Vercel URL
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
