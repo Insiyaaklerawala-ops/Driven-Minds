@@ -1,7 +1,7 @@
 from fastapi import Header, HTTPException
 from jose import JWTError
 
-from backend.app.core.auth import decode_access_token
+from app.core.auth import decode_access_token
 
 
 async def require_auth(authorization: str = Header(None)) -> str:

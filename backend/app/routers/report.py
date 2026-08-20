@@ -1,10 +1,10 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
-from backend.app.core.dependencies import require_auth
+from app.core.dependencies import require_auth
 
-from backend.app.core.report_generator import generate_pdf
-from backend.app.core import session_store
+from app.core.report_generator import generate_pdf
+from app.core import session_store
 
 router = APIRouter()
 

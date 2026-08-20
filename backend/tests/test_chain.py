@@ -1,6 +1,7 @@
 import pandas as pd
-from backend.app.core.bias_engine import analyze_bias
-from backend.app.core.explainer import explain_bias
+from app.core.bias_engine import analyze_bias
+from app.core.explainer import explain_bias
+from app.core.report_generator import generate_pdf
 
 df = pd.read_csv("adult.csv")
 
@@ -13,7 +14,7 @@ explanation = explain_bias(results)
 print(explanation)
 
 print("\nStep 3: Generating PDF report...")
-from backend.app.core.report_generator import generate_pdf
+
 path = generate_pdf(results, explanation)
 print("PDF saved to:", path)
 

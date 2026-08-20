@@ -1,15 +1,20 @@
 from fastapi import APIRouter, HTTPException
+from fastapi import Depends
+from app.core.dependencies import require_auth
 
-from backend.app.models.schemas import MitigateRequest, MitigateResponse
-from backend.app.core.bias_engine import mitigate_bias
-from backend.app.core.explainer import explain_mitigation
-from backend.app.core import session_store
+from app.models.schemas import MitigateRequest, MitigateResponse
+from app.core.bias_engine import mitigate_bias
+from app.core.explainer import explain_mitigation
+from app.core import session_store
 
 router = APIRouter()
 
 
 @router.post("/mitigate", response_model=MitigateResponse)
-async def mitigate(req: MitigateRequest):
+async def mitigate(
+    req: MitigateRequest,
+    username: str = Depends(require_auth),
+):
     try:
         session = session_store.get_session(req.session_id)
     except KeyError as e:

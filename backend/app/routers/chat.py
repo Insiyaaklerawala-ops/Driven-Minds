@@ -1,10 +1,10 @@
 from fastapi import APIRouter, HTTPException
 from fastapi import Depends
-from backend.app.core.dependencies import require_auth
+from app.core.dependencies import require_auth
 
-from backend.app.models.schemas import ChatRequest, ChatResponse
-from backend.app.core.explainer import answer_question
-from backend.app.core import session_store
+from app.models.schemas import ChatRequest, ChatResponse
+from app.core.explainer import answer_question
+from app.core import session_store
 
 router = APIRouter()
 
