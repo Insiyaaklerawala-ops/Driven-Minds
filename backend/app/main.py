@@ -13,11 +13,12 @@ app = FastAPI(title="Unbiased AI API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "https://unbiased-ai.vercel.app",
-    "https://biasdetector-driven-minds.vercel.app",
-],
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "https://unbiased-ai.vercel.app",
+        "https://biasdetector-driven-minds.vercel.app",
+        "https://biasdetector-alpha.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
